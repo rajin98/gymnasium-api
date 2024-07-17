@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 from flask import Flask, request, jsonify
 import uuid
-import gym
+import gymnasium as gym
+from gymnasium.wrappers import record_video
 import numpy as np
 import six
 import argparse
@@ -43,7 +44,7 @@ class Envs(object):
 
     def create(self, env_id, seed=None):
         try:
-            env = gym.make(env_id)
+            env = gym.make(env_id, render_mode="rgb_array")
             if seed:
                 env.seed(seed)
         except gym.error.Error:
@@ -59,6 +60,7 @@ class Envs(object):
     def reset(self, instance_id):
         env = self._lookup_env(instance_id)
         obs = env.reset()
+        print(obs)
         return env.observation_space.to_jsonable(obs)
 
     def step(self, instance_id, action, render):
@@ -110,7 +112,7 @@ class Envs(object):
         info = {}
         info['name'] = space.__class__.__name__
         if info['name'] == 'Discrete':
-            info['n'] = space.n
+            info['n'] = space.n.item()
         elif info['name'] == 'Box':
             info['shape'] = space.shape
             # It's not JSON compliant to have Infinity, -Infinity, NaN.
@@ -130,7 +132,7 @@ class Envs(object):
             v_c = lambda count: False
         else:
             v_c = lambda count: count % video_callable == 0
-        self.envs[instance_id] = gym.wrappers.Monitor(env, directory, force=force, resume=resume, video_callable=v_c) 
+        self.envs[instance_id] = record_video.RecordVideo(env, directory, name_prefix=instance_id) 
 
     def monitor_close(self, instance_id):
         env = self._lookup_env(instance_id)
@@ -274,6 +276,7 @@ def env_action_space_info(instance_id):
     space to space
     """
     info = envs.get_action_space_info(instance_id)
+    print(info)
     return jsonify(info = info)
 
 @app.route('/v1/envs/<instance_id>/action_space/sample', methods=['GET'])
