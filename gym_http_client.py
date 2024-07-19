@@ -68,9 +68,10 @@ class Client(object):
         resp = self._post_request(route, data)
         observation = resp['observation']
         reward = resp['reward']
-        done = resp['done']
+        terminated = resp['terminated']
+        truncated = resp['truncated']
         info = resp['info']
-        return [observation, reward, done, info]
+        return [observation, reward, terminated, truncated, info]
 
     def env_action_space_info(self, instance_id):
         route = '/v1/envs/{}/action_space/'.format(instance_id)
@@ -102,13 +103,10 @@ class Client(object):
         member = resp['member']
         return member
 
-    def env_monitor_start(self, instance_id, directory,
-                              force=False, resume=False, video_callable=False):
+    def env_monitor_start(self, instance_id, directory, interval=50):
         route = '/v1/envs/{}/monitor/start/'.format(instance_id)
         data = {'directory': directory,
-                'force': force,
-                'resume': resume,
-                'video_callable': video_callable}
+                'interval': interval}
         self._post_request(route, data)
 
     def env_monitor_close(self, instance_id):

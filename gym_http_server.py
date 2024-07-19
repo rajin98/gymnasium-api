@@ -6,7 +6,6 @@ from gymnasium.wrappers import record_video
 import numpy as np
 import six
 import argparse
-import sys
 import json
 
 
@@ -42,11 +41,9 @@ class Envs(object):
         except KeyError:
             raise InvalidUsage('Instance_id {} unknown'.format(instance_id))
 
-    def create(self, env_id, seed=None):
+    def create(self, env_id):
         try:
             env = gym.make(env_id, render_mode="rgb_array")
-            if seed:
-                env.seed(seed)
         except gym.error.Error:
             raise InvalidUsage("Attempted to look up malformed environment ID '{}'".format(env_id))
 
@@ -59,8 +56,7 @@ class Envs(object):
 
     def reset(self, instance_id):
         env = self._lookup_env(instance_id)
-        obs = env.reset()
-        print(obs)
+        obs, info = env.reset()
         return env.observation_space.to_jsonable(obs)
 
     def step(self, instance_id, action, render):
@@ -71,9 +67,9 @@ class Envs(object):
             nice_action = np.array(action)
         if render:
             env.render()
-        [observation, reward, done, info] = env.step(nice_action)
+        [observation, reward, terminated, truncated, info] = env.step(nice_action)
         obs_jsonable = env.observation_space.to_jsonable(observation)
-        return [obs_jsonable, reward, done, info]
+        return [obs_jsonable, reward, terminated, truncated, info]
 
     def get_action_space_contains(self, instance_id, x):
         env = self._lookup_env(instance_id)
@@ -119,20 +115,17 @@ class Envs(object):
             # Many newer JSON parsers allow it, but many don't. Notably python json
             # module can read and write such floats. So we only here fix "export version",
             # also make it flat.
-            info['low']  = [(x if x != -np.inf else -1e100) for x in np.array(space.low ).flatten()]
-            info['high'] = [(x if x != +np.inf else +1e100) for x in np.array(space.high).flatten()]
+            info['low']  = [(x.item() if x != -np.inf else -1e100) for x in np.array(space.low ).flatten()]
+            info['high'] = [(x.item() if x != +np.inf else +1e100) for x in np.array(space.high).flatten()]
         elif info['name'] == 'HighLow':
             info['num_rows'] = space.num_rows
             info['matrix'] = [((float(x) if x != -np.inf else -1e100) if x != +np.inf else +1e100) for x in np.array(space.matrix).flatten()]
         return info
 
-    def monitor_start(self, instance_id, directory, force, resume, video_callable):
+    def monitor_start(self, instance_id, directory, interval):
         env = self._lookup_env(instance_id)
-        if video_callable == False:
-            v_c = lambda count: False
-        else:
-            v_c = lambda count: count % video_callable == 0
-        self.envs[instance_id] = record_video.RecordVideo(env, directory, name_prefix=instance_id) 
+        video_callable = lambda count: count % interval == 0
+        self.envs[instance_id] = record_video.RecordVideo(env, video_folder=directory, episode_trigger=video_callable, name_prefix = instance_id) 
 
     def monitor_close(self, instance_id):
         env = self._lookup_env(instance_id)
@@ -204,8 +197,7 @@ def env_create():
         manipulated
     """
     env_id = get_required_param(request.get_json(), 'env_id')
-    seed = get_optional_param(request.get_json(), 'seed', None)
-    instance_id = envs.create(env_id, seed)
+    instance_id = envs.create(env_id)
     return jsonify(instance_id = instance_id)
 
 @app.route('/v1/envs/', methods=['GET'])
@@ -257,9 +249,9 @@ def env_step(instance_id):
     json = request.get_json()
     action = get_required_param(json, 'action')
     render = get_optional_param(json, 'render', False)
-    [obs_jsonable, reward, done, info] = envs.step(instance_id, action, render)
+    [obs_jsonable, reward, terminated, truncated, info] = envs.step(instance_id, action, render)
     return jsonify(observation = obs_jsonable,
-                    reward = reward, done = done, info = info)
+                    reward = reward, terminated=terminated, truncated=truncated, info = info)
 
 @app.route('/v1/envs/<instance_id>/action_space/', methods=['GET'])
 def env_action_space_info(instance_id):
@@ -360,10 +352,8 @@ def env_monitor_start(instance_id):
     j = request.get_json()
 
     directory = get_required_param(j, 'directory')
-    force = get_optional_param(j, 'force', False)
-    resume = get_optional_param(j, 'resume', False)
-    video_callable = get_optional_param(j, 'video_callable', False)
-    envs.monitor_start(instance_id, directory, force, resume, video_callable)
+    interval = get_optional_param(j, 'interval', False)
+    envs.monitor_start(instance_id, directory, interval)
     return ('', 204)
 
 @app.route('/v1/envs/<instance_id>/monitor/close/', methods=['POST'])

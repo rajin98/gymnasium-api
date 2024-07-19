@@ -23,8 +23,8 @@ if __name__ == '__main__':
     agent = RandomDiscreteAgent(action_space_info['n'])
 
     # Run experiment, with monitor
-    outdir = '/tmp/random-agent-results'
-    client.env_monitor_start(instance_id, outdir, force=True, resume=False, video_callable=False)
+    outdir = './tmp/random-agent-results'
+    client.env_monitor_start(instance_id, outdir, 10)
     
     episode_count = 100
     max_steps = 200
@@ -36,7 +36,7 @@ if __name__ == '__main__':
 
         for j in range(max_steps):
             action = client.env_action_space_sample(instance_id)
-            ob, reward, done, _ = client.env_step(instance_id, action, render=True)
+            ob, reward, terminated, truncated, _ = client.env_step(instance_id, action, render=True)
             if done:
                 break
 
